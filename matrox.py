@@ -10,17 +10,24 @@ import numpy as np
 
 #step 2: remove noise and fix colour
 def correct_yellowish_tint(frame):
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV_FULL)
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-    hue_shift = 260 
+    # Convert to int32 for processing
+    hsv = hsv.astype(np.int32)
+
+    hue_shift = -20
     saturation_shift = 0
-    value_shift = 0  
+    value_shift = 0 
 
-    hsv[:, :, 0] = (hsv[:, :, 0] + hue_shift) % 180  # Hue shift
-    hsv[:, :, 1] = np.clip(hsv[:, :, 1] + saturation_shift, 0, 255)  # Saturation shift
-    hsv[:, :, 2] = np.clip(hsv[:, :, 2] + value_shift, 0, 255)  # Value shift
+    hsv[:, :, 0] = (hsv[:, :, 0] + hue_shift) % 180
+    hsv[:, :, 1] = np.clip(hsv[:, :, 1] + saturation_shift, 0, 255)
+    hsv[:, :, 2] = np.clip(hsv[:, :, 2] + value_shift, 0, 255)
 
-    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR_FULL)
+    # Convert back to uint8 before converting back to BGR
+    corrected_hsv = np.clip(hsv, 0, 255).astype(np.uint8)
+    corrected_frame = cv2.cvtColor(corrected_hsv, cv2.COLOR_HSV2BGR)
+
+    return corrected_frame
 
 cap = cv2.VideoCapture('output.mp4')
 

@@ -1,47 +1,48 @@
 import cv2
 import numpy as np
 
-# Function to calculate the shift needed
-def calculate_shift(original, modified):
-    # Calculate the difference
-    difference = original - modified
-    # Adjust for the circular nature of the hue channel
-    difference[difference > 90] -= 180
-    difference[difference < -90] += 180
-    return np.mean(difference), np.median(difference)
+# Function to convert frame to grayscale and adjust brightness
+def convert_to_grayscale_and_adjust_brightness(frame, brightness=0):
+    # Apply median blur to reduce noise
+    frame = cv2.medianBlur(frame, 5)
+    # Apply sharpening filter
+    sharpen_kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+    frame = cv2.filter2D(frame, -1, sharpen_kernel)
+    # Convert to grayscale
+    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # Adjust brightness
+    if brightness != 0:
+        # Create an array of brightness values
+        brightness_array = np.full(gray_frame.shape, brightness, dtype=np.uint8)
+        if brightness > 0:
+            gray_frame = cv2.add(gray_frame, brightness_array)
+        else:
+            gray_frame = cv2.subtract(gray_frame, brightness_array)
+    return gray_frame
 
-# Function to apply the calculated shift
-def apply_shift(image, shift, channel):
-    if channel == 0:  # Hue channel
-        image[:, :, channel] = (image[:, :, channel] + shift) % 180
-    else:  # Saturation and value channels
-        image[:, :, channel] = np.clip(image[:, :, channel] + shift, 0, 255)
-    return image
+brightness_change = 0  # Increase or decrease this value to adjust brightness
 
-# Load the images
-original = cv2.imread('original.png')  # Update with the correct path
-messed_up = cv2.imread('messed_up.png')  # Update with the correct path
+cap = cv2.VideoCapture('output.mp4')
 
-# Ensure the images are the same size
-if original.shape != messed_up.shape:
-    messed_up = cv2.resize(messed_up, (original.shape[1], original.shape[0]))
+frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+fps = cap.get(cv2.CAP_PROP_FPS)
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
-# Convert to HSV
-hsv_original = cv2.cvtColor(original, cv2.COLOR_BGR2HSV)
-hsv_messed_up = cv2.cvtColor(messed_up, cv2.COLOR_BGR2HSV)
+# Initialize VideoWriter for grayscale output
+out = cv2.VideoWriter('processed_output.mp4', fourcc, fps, (frame_width, frame_height), isColor=False)
 
-# Calculate shifts needed for each channel
-hue_shift, _ = calculate_shift(hsv_original[:, :, 0], hsv_messed_up[:, :, 0])
-saturation_shift, _ = calculate_shift(hsv_original[:, :, 1], hsv_messed_up[:, :, 1])
-value_shift, _ = calculate_shift(hsv_original[:, :, 2], hsv_messed_up[:, :, 2])
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
 
-# Apply the shifts
-hsv_messed_up = apply_shift(hsv_messed_up, hue_shift, 0)
-hsv_messed_up = apply_shift(hsv_messed_up, saturation_shift, 1)
-hsv_messed_up = apply_shift(hsv_messed_up, value_shift, 2)
+    # Process the frame and convert it to grayscale and adjust brightness
+    gray_and_bright_frame = convert_to_grayscale_and_adjust_brightness(frame, brightness_change)
 
-# Convert back to BGR
-corrected_image = cv2.cvtColor(hsv_messed_up, cv2.COLOR_HSV2BGR)
+    # Write the grayscale and brightness adjusted frame to the output video
+    out.write(gray_and_bright_frame)
 
-# Save the corrected image
-cv2.imwrite('corrected_image.png', corrected_image)  # Update with the correct path
+# Release the VideoCapture and VideoWriter objects
+cap.release()
+out.release()
