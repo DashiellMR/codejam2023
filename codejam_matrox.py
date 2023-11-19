@@ -4,6 +4,7 @@ import skvideo.io
 import skvideo.datasets
 import numpy as np
 import pytesseract
+import re
 
 #Step 1: convert .h264 to .mp4
 input_stream = ffmpeg.input('codejam_matrox_2023_noisy.h264')
