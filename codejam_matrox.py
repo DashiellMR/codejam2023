@@ -5,80 +5,67 @@ import skvideo.datasets
 import numpy as np
 import pytesseract
 import re
+import time
 
-#Step 1: convert .h264 to .mp4
-input_stream = ffmpeg.input('codejam_matrox_2023_noisy.h264')
-ffmpeg.output(input_stream, 'output.mp4').run()
+t1 = time.time() # Grab start time
 
-#Step 2: remove noise and fix colour
-def correct_yellowish_tint(frame):
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+#Step 1: Convert .h264 to .mp4
+input_stream = ffmpeg.input('codejam_matrox_2023_noisy.h264') # Initialise input video
+ffmpeg.output(input_stream, 'output.mp4').run() # Convert image to .mp4 file
 
-    hue_shift = -20
-    saturation_shift = 0
-    value_shift = 0 
+#Step 2: Remove noise and fix colour
+cap = cv2.VideoCapture('output.mp4') # Take the newly outputted video and set is as the source
 
-    hsv[:, :, 0] = (hsv[:, :, 0] + hue_shift) % 180
-    hsv[:, :, 1] = np.clip(hsv[:, :, 1] + saturation_shift, 0, 255)
-    hsv[:, :, 2] = np.clip(hsv[:, :, 2] + value_shift, 0, 255)
+frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) # Retrieve video width
+frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) # Retrieve video height
+fps = cap.get(cv2.CAP_PROP_FPS) #Retrieve video FPS
+fourcc = cv2.VideoWriter_fourcc(*'mp4v') # Identify desired data format (in this case an .mp4v)
 
-    corrected_hsv = np.clip(hsv, 0, 255)
-    corrected_frame = cv2.cvtColor(corrected_hsv, cv2.COLOR_HSV2BGR)
+out = cv2.VideoWriter('complete.mp4', fourcc, fps, (frame_width, frame_height)) # Indicate characteristics of the output
 
-    return corrected_frame
-
-cap = cv2.VideoCapture('output.mp4')
-
-frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-fps = cap.get(cv2.CAP_PROP_FPS)
-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-
-out = cv2.VideoWriter('complete.mp4', fourcc, fps, (frame_width, frame_height))
-
-shrp_kernel_2 = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+blur_kernel = np.array([[0.0625, 0.125, 0.0625],[0.125, 0.25, 0.125],[0.0625, 0.125, 0.0625]]) # 3x3 Gaussian Blur
+sharpening_kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]]) # 3x3 Sharpening Kernel
 
 while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
-
-    filtered_frame = cv2.medianBlur(frame, 5)
-
-    sharpened_frame = cv2.filter2D(filtered_frame, -1, shrp_kernel_2)
-
-    corrected_frame = correct_yellowish_tint(sharpened_frame)
-
-    out.write(corrected_frame)
-
-cap.release()
-out.release()
-
-def preprocess_for_ocr(frame):
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    return thresh
-
-cap = cv2.VideoCapture('complete.mp4')
-
-numbers_string = ""
-
-for _ in range(10):
-    ret, frame = cap.read()
-    if not ret:
+    ret, frame = cap.read() # Read frame
+    if not ret: # Check if there are no frames remaining
         break
     
-    height, width, _ = frame.shape
+    filtered_frame = cv2.medianBlur(frame, 3) # Built-in 3x3 Median Blur
+    blur_frame = cv2.filter2D(filtered_frame, -1, blur_kernel) # Apply Gaussian Blur
+    sharpened_frame = cv2.filter2D(blur_frame, -1, sharpening_kernel) # Apply Sharpening Kernel
     
-    cropped_frame = frame[:height//2, width//2:]
+    out.write(sharpened_frame) # Output newly modified frame
     
-    preprocessed_frame = preprocess_for_ocr(cropped_frame)
-    
-    text = pytesseract.image_to_string(preprocessed_frame, config='--psm 6 digits')
-    text = re.sub(r'\D', '', text)
+cap.release() # Don't forget to release !
+out.release() # Don't forget to release x2 !
 
-    numbers_string += text
+cap = cv2.VideoCapture('complete.mp4') # Output filename
+
+#Step 3: Extract the numbers
+numbers = "" # Initialise string to hold video numbers
+ 
+def preprocess(frame):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) # Convert to grayscale
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_OTSU) # Apply Otsu's Thresholding Algorithm (Dynamic Thresholding)
+    return thresh 
+
+for _ in range(8): 
+    ret, frame = cap.read() # Read frame
+    if not ret: # Check if there are any frames left
+        break
     
-cap.release()
-print(numbers_string)
-print("Done")
+    height, width, _ = frame.shape # Define size of the frame
+    
+    cropped_frame = frame[:height//3, width//2:] # Crop frame to assist in number transcription
+    
+    preprocessed_frame = preprocess(cropped_frame) # Apply thresholding to current frame
+    
+    text = pytesseract.image_to_string(preprocessed_frame, config='--psm 6 digits') # Extract number from frame
+    text = re.sub(r'\D', '', text) # Remove noise from transcription
+
+    numbers += text # Add current number
+    
+cap.release() # Don't forget to release x3 !
+t2 = time.time() # Grab finish time
+print(f"String Found: {numbers}, Time Taken: {round(t2-t1, 3)}s") # Print out transcribed numbers and time taken to complete
